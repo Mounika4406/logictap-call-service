@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.db
+.pytest_cache/
+test.png
+webhook_edge.png
+webhook_site_requests.png
+webhook_ui_test.png
+capture_screenshot.py
+demo.ps1
+payload.json
+bad_payload.json
