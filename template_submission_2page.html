@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LOGICTAP TAKE-HOME ASSIGNMENT</title>
+<style>
+  @page {
+    size: A4;
+    margin: 10mm 14mm 10mm 14mm;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #111827;
+    line-height: 1.32;
+    font-size: 9.8px;
+    margin: 0;
+    padding: 0;
+  }
+  .header {
+    border-bottom: 1.5px solid #1e3a5f;
+    padding-bottom: 3px;
+    margin-bottom: 6px;
+  }
+  .title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #1e3a5f;
+    letter-spacing: 0.5px;
+  }
+  .meta {
+    font-size: 10.5px;
+    color: #374151;
+    margin-top: 1px;
+  }
+  .section-title {
+    font-size: 11.5px;
+    font-weight: 800;
+    color: #1e3a5f;
+    letter-spacing: 0.5px;
+    margin-top: 6px;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+  }
+  .sub-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #111827;
+    margin-top: 3px;
+    margin-bottom: 1.5px;
+  }
+  ol, ul {
+    margin: 1px 0 2px 14px;
+    padding: 0;
+  }
+  li {
+    margin-bottom: 1px;
+  }
+  p {
+    margin: 1px 0 2px 0;
+  }
+  code {
+    font-family: "Cascadia Code", Consolas, Monaco, "Courier New", monospace;
+    font-size: 9px;
+    background-color: #f3f4f6;
+    padding: 1px 3px;
+    border-radius: 2px;
+  }
+  pre {
+    font-family: "Cascadia Code", Consolas, Monaco, monospace;
+    font-size: 8.8px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #0f172a;
+    padding: 3px 5px;
+    border-radius: 3px;
+    margin: 1.5px 0 2.5px 0;
+    line-height: 1.25;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .code-dark {
+    background-color: #0f172a;
+    color: #f8fafc;
+    border: none;
+  }
+  .sql-block {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 9px;
+    background: #f8fafc;
+    border-left: 3px solid #1e3a5f;
+    padding: 2.5px 5px;
+    margin: 1.5px 0;
+  }
+  .screenshot-box {
+    text-align: center;
+    margin: 2px 0;
+  }
+  .screenshot-box img {
+    max-width: 88%;
+    max-height: 145px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+  }
+  .page-break {
+    page-break-before: always;
+  }
+  a {
+    color: #1e3a5f;
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1: HEADER, PART 1 & PART 2 -->
+<div class="header">
+  <div class="title">LOGICTAP TAKE-HOME ASSIGNMENT</div>
+  <div class="meta">
+    <strong>Candidate:</strong> Bandharu Mounika Lakshmi Jyothirmayi &nbsp;|&nbsp; 
+    <strong>Date:</strong> 6 October 2026
+  </div>
+</div>
+
+<div class="section-title">PART 1 - DEBUGGING</div>
+
+<div class="sub-title">1. Why the patient was called again</div>
+<ol>
+  <li>At 10:02:19 the call was answered and a 45-second timer started.</li>
+  <li>The caller kept speaking, but nothing cancelled the timer.</li>
+  <li>At 10:03:04 it fired mid-call, marked the job <em>failed</em>, set <code>attempts=1</code> and queued a retry for +30 minutes.</li>
+  <li>The call then ended <em>answered</em>, so the job became <em>completed</em>. The queued retry was never cancelled.</li>
+  <li>A duplicate webhook (40 ms later) pushed attempts to 3.</li>
+  <li>At 10:33:04 the retry ran. <code>run_job</code> does not check state, so it dialled a completed job.</li>
+</ol>
+
+<div class="sub-title">2. Problems, in the order I would fix them</div>
+<ol>
+  <li><code>run_job</code> dials without checking state or attempts.</li>
+  <li>The no-response timer is not cancelled on speech or call end (stale timer).</li>
+  <li>No state rules: <em>failed</em> and <em>completed</em> overwrite each other, and a finished job's retry is not cancelled.</li>
+  <li>Duplicate webhooks are not deduplicated (no event ID), which inflates attempts.</li>
+  <li>Attempts are counted in two handlers instead of once per dial.</li>
+  <li>Read-modify-write with no transaction, so the timer and a webhook can race.</li>
+  <li>The phone number is logged in plain text.</li>
+</ol>
+
+<div class="sub-title">3. Fix for problem 1</div>
+<p>Claim the job atomically before dialling. Retry scheduling sets the state back to <em>queued</em>.</p>
+<div class="sql-block">
+UPDATE jobs SET state='dialling', attempts=attempts+1<br>
+WHERE id=? AND state='queued' AND attempts&lt;max_attempts
+</div>
+<p>If zero rows change, log "skipped" and return without dialling. Two workers cannot both claim the job, and a completed job or one at max attempts is never dialled.</p>
+
+<div class="section-title">PART 2 - WEBHOOKS</div>
+
+<div class="sub-title">1. Tool used</div>
+<p><strong>webhook.site</strong> (Unique URL: <code>https://webhook.site/f27c3ccb-d2fa-4f45-9a26-776e16aeab94</code>)</p>
+
+<div class="sub-title">2. Command</div>
+<pre><code>curl -i -X POST https://webhook.site/f27c3ccb-d2fa-4f45-9a26-776e16aeab94 \
+  -H "Content-Type: application/json" \
+  -d '{"call_id": "call_8841", "status": "answered", "duration_secs": 42}'</code></pre>
+<p style="font-size: 8.5px; color: #4b5563;"><em>(Executed twice from PowerShell terminal)</em></p>
+
+<div class="sub-title">3. Screenshot</div>
+<div class="screenshot-box">
+  <img src="webhook_site_screenshot.png" alt="Webhook.site Inspector showing both requests arriving">
+</div>
+
+<div class="sub-title">4. How a duplicate request could be detected</div>
+<p>Looking strictly at the tool: both requests show the exact same JSON body (<code>{"call_id": "call_8841", "status": "answered", "duration_secs": 42}</code>), same HTTP method (<code>POST</code>), same IP (<code>223.196.192.216</code>), and identical Content-Length (67 bytes). They only differ by arrival timestamp (14:36:42 vs 14:36:57 GMT) and the tool's internal request UUID. A server seeing identical body fields for the same <code>call_id</code> knows the second request is a duplicate.</p>
+
+<div class="sub-title">5. What I would add to the request</div>
+<p>An <strong>Idempotency-Key</strong> or <strong>X-Event-ID</strong> header (e.g. <code>Idempotency-Key: evt_8841_call_ended</code>) and <code>X-Delivery-Attempt: 2</code>, allowing the server to deduplicate requests via an O(1) cache lookup before even parsing the body.</p>
+
+<div class="sub-title">6. What I learned</div>
+<p>Duplicate webhooks carry identical business payloads but distinct transport-level metadata (different TCP ports and server-assigned request IDs), so deduplication must happen at the application layer. Also, Windows PowerShell strips raw double quotes from JSON arguments passed to external CLI tools like curl unless single-quoted or escaped.</p>
+
+<div class="page-break"></div>
+
+<!-- PAGE 2: PART 3 & PART 4 -->
+<div class="section-title" style="margin-top: 0;">PART 3 - SMALL SERVICE</div>
+
+<div class="sub-title">1. Version 1</div>
+<p>First untouched AI-generated code: <a href="https://github.com/Mounika4406/logictap-call-service/blob/main/version1.py">version1.py (GitHub)</a></p>
+<pre><code>from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+
+app = FastAPI()
+calls_db = {}  # In-memory dict
+
+class CallEndedPayload(BaseModel):
+    call_id: Optional[str] = None
+    status: str
+    duration_secs: int
+
+@app.post("/call-ended")
+def call_ended(payload: CallEndedPayload):
+    if not payload.call_id:
+        raise HTTPException(status_code=400, detail="Missing call_id")
+    if payload.call_id in calls_db:
+        return {"status": "success", "message": "Call already recorded", "data": calls_db[payload.call_id]}
+    record = payload.dict()
+    calls_db[payload.call_id] = record
+    return {"status": "success", "message": "Call recorded", "data": record}
+
+@app.get("/calls/{call_id}")
+def get_call(call_id: str):
+    if call_id not in calls_db:
+        raise HTTPException(status_code=404, detail="Call not found")
+    return calls_db[call_id]</code></pre>
+
+<div class="sub-title">2. Final version / GitHub link</div>
+<p>Full production implementation & tests: <a href="https://github.com/Mounika4406/logictap-call-service">https://github.com/Mounika4406/logictap-call-service</a></p>
+
+<div class="sub-title">3. AI prompts</div>
+<ol>
+  <li><em>"Write a Python FastAPI service with two endpoints: POST /call-ended: accepts JSON like {'call_id': 'abc123', 'status': 'answered', 'duration_secs': 42} and stores it. If the call_id already exists, don't store a duplicate and return success. If call_id is missing, reject it with an error. GET /calls/{call_id}: returns the stored call or 404 if not found."</em></li>
+  <li><em>"The in-memory dict has concurrency race conditions under duplicate webhook arrival and loses data on reboot. Refactor this to use SQLite with atomic idempotency using INSERT OR IGNORE and a PRIMARY KEY. Add Pydantic v2 validators rejecting empty/whitespace call_id and negative duration, return HTTP 201 for fresh creations vs 200 for duplicates, and map missing call_id to HTTP 400 Bad Request."</em></li>
+</ol>
+
+<div class="sub-title">4. What changed (2-3 lines)</div>
+<p>1. Replaced ephemeral in-memory dict with SQLite persistent storage using <code>PRIMARY KEY (call_id)</code> and atomic <code>INSERT OR IGNORE</code> to eliminate race conditions under concurrent webhook arrivals.<br>
+2. Upgraded to Pydantic v2 validation enforcing non-blank <code>call_id</code> and non-negative <code>duration_secs</code>, returning structured HTTP 400 Bad Request errors.<br>
+3. Standardized HTTP status codes: returning HTTP 201 Created on fresh inserts and HTTP 200 OK on idempotent duplicate replays.</p>
+
+<div class="sub-title">5. Proof it runs</div>
+<pre class="code-dark"><code>&gt;&gt;&gt; POST /call-ended (1st)       -&gt; 201 Created: {"success":true,"message":"Call record created successfully","call_id":"abc123","is_duplicate":false}
+&gt;&gt;&gt; POST /call-ended (duplicate) -&gt; 200 OK:      {"success":true,"message":"Duplicate call received; existing record preserved","call_id":"abc123","is_duplicate":true}
+&gt;&gt;&gt; GET  /calls/abc123          -&gt; 200 OK:      {"call_id":"abc123","status":"answered","duration_secs":42,"created_at":"2026-10-06 15:01:01"}
+&gt;&gt;&gt; POST /call-ended (no id)    -&gt; 400 Bad Req: {"error":"Bad Request","detail":"call_id is required and cannot be empty"}</code></pre>
+
+<div class="sub-title">6. Automated test</div>
+<p style="margin-bottom: 1.5px;"><strong>Why it matters:</strong> It verifies end-to-end idempotency by posting the same payload twice, asserting both calls succeed, and confirming the database record count remains exactly 1.</p>
+<pre><code>def test_repeated_request_does_not_create_second_record():
+    payload = {"call_id": "abc123", "status": "answered", "duration_secs": 42}
+    resp1 = client.post("/call-ended", json=payload)
+    assert resp1.status_code in [200, 201] and resp1.json()["success"] is True
+
+    resp2 = client.post("/call-ended", json=payload)
+    assert resp2.status_code == 200 and resp2.json()["success"] is True
+
+    with sqlite3.connect(TEST_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM calls WHERE call_id = ?", ("abc123",))
+        assert cursor.fetchone()[0] == 1  # Exactly 1 record exists</code></pre>
+<p style="font-size: 9px; color: #166534; font-weight: 600; margin-top: 1px;">Pytest Result: 4 passed in 0.78s</p>
+
+<div class="section-title">PART 4 - REFLECTION</div>
+
+<div class="sub-title">1. AI mistake</div>
+<p>The AI initially used an in-memory dictionary with a Python check (<code>if call_id in calls_db:</code>). In an async multi-worker setup, duplicate webhooks arriving milliseconds apart (like the two 40ms apart in Part 1) cause a race condition where both check before either writes, creating duplicates. I replaced this with an SQLite database using an atomic <code>PRIMARY KEY</code> and <code>INSERT OR IGNORE</code> query to enforce idempotency at the database engine level.</p>
+
+<div class="sub-title">2. Tools used</div>
+<p><strong>AI:</strong> Gemini. <strong>Runtime & Stack:</strong> Python 3.14.7, FastAPI, SQLite3, Uvicorn, Pydantic v2. <strong>Testing:</strong> pytest, HTTPX. <strong>Webhook Tools:</strong> webhook.site, cURL, Google Chrome. <strong>Version Control:</strong> Git, GitHub.</p>
+
+<div class="sub-title">3. Hardest part</div>
+<p>Tracing how the uncancelled silence timer silently scheduled a 30-minute retry that later dialled without checking the completed job state.</p>
+
+<div class="sub-title">4. Total time</div>
+<p><strong>48 minutes</strong> (Part 1: 15 min, Part 2: 12 min, Part 3: 18 min, Part 4: 3 min).</p>
+
+</body>
+</html>
