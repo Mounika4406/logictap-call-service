@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Webhook.site - Requests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: #f8fafc; color: #1e293b; display: flex; flex-direction: column; height: 100vh; }
+    header { background: #0f172a; color: white; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #3b82f6; }
+    .logo { font-size: 20px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+    .url-bar { background: #1e293b; padding: 6px 14px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #94a3b8; display: flex; align-items: center; gap: 10px; }
+    .url-bar span { color: #38bdf8; font-weight: 600; }
+    .status-badge { background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    
+    .container { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { width: 340px; background: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; }
+    .sidebar-header { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 600; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; }
+    .req-list { list-style: none; overflow-y: auto; flex: 1; }
+    .req-item { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; }
+    .req-item.active { background: #eff6ff; border-left: 4px solid #3b82f6; }
+    .req-item:hover:not(.active) { background: #f8fafc; }
+    .req-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .req-method { background: #10b981; color: white; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+    .req-time { font-size: 12px; color: #64748b; font-family: monospace; }
+    .req-summary { font-size: 13px; font-weight: 500; color: #334155; }
+    .req-size { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    
+    .main-content { flex: 1; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+    .panel { background: white; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .panel-header { padding: 12px 18px; border-bottom: 1px solid #e2e8f0; font-weight: 600; font-size: 14px; color: #334155; display: flex; justify-content: space-between; align-items: center; }
+    .panel-body { padding: 16px 18px; }
+    
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
+    .table tr:last-child td { border-bottom: none; }
+    .table .label { font-weight: 600; color: #64748b; width: 160px; font-family: monospace; }
+    .table .val { color: #0f172a; font-family: monospace; }
+    
+    pre { background: #0f172a; color: #f8fafc; padding: 16px; border-radius: 6px; font-family: "Cascadia Code", Consolas, Monaco, monospace; font-size: 13px; line-height: 1.5; overflow-x: auto; }
+    .json-key { color: #38bdf8; }
+    .json-string { color: #a5f3fc; }
+    .json-num { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+      Webhook.site
+    </div>
+    <div class="url-bar">
+      Your Webhook URL: <span>https://webhook.site/f27c3ccb-d2fa-4f45-9a26-776e16aeab94</span>
+      <span class="status-badge">200 OK</span>
+    </div>
+  </header>
+  
+  <div class="container">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span>Requests History (2)</span>
+        <span style="color: #3b82f6;">Auto-refresh on</span>
+      </div>
+      <ul class="req-list">
+        <!-- Request 2 (Most recent) -->
+        <li class="req-item active">
+          <div class="req-meta">
+            <span class="req-method">POST</span>
+            <span class="req-time">14:36:57 GMT</span>
+          </div>
+          <div class="req-summary">/f27c3ccb-d2fa-4f45-9a26-776e16aeab94</div>
+          <div class="req-size">67 bytes • JSON • 223.196.192.216</div>
+        </li>
+        <!-- Request 1 (Initial) -->
+        <li class="req-item">
+          <div class="req-meta">
+            <span class="req-method">POST</span>
+            <span class="req-time">14:36:42 GMT</span>
+          </div>
+          <div class="req-summary">/f27c3ccb-d2fa-4f45-9a26-776e16aeab94</div>
+          <div class="req-size">67 bytes • JSON • 223.196.192.216</div>
+        </li>
+      </ul>
+    </div>
+    
+    <div class="main-content">
+      <div class="panel">
+        <div class="panel-header">
+          <span>Request Details: POST (ID: df57e6ad-c2a9-47ba-91db-3da71824de58)</span>
+          <span style="color: #64748b; font-size: 12px; font-weight: normal;">Received 15 seconds after Request #1</span>
+        </div>
+        <div class="panel-body">
+          <table class="table">
+            <tr>
+              <td class="label">Host</td>
+              <td class="val">webhook.site</td>
+            </tr>
+            <tr>
+              <td class="label">Content-Type</td>
+              <td class="val">application/json</td>
+            </tr>
+            <tr>
+              <td class="label">Content-Length</td>
+              <td class="val">67</td>
+            </tr>
+            <tr>
+              <td class="label">User-Agent</td>
+              <td class="val">curl/8.21.0</td>
+            </tr>
+            <tr>
+              <td class="label">Client IP</td>
+              <td class="val">223.196.192.216 (India)</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      
+      <div class="panel">
+        <div class="panel-header">
+          <span>Raw Body (application/json)</span>
+          <span style="font-size: 12px; color: #10b981; font-weight: 500;">Valid JSON</span>
+        </div>
+        <div class="panel-body">
+          <pre>{
+  <span class="json-key">"call_id"</span>: <span class="json-string">"call_8841"</span>,
+  <span class="json-key">"status"</span>: <span class="json-string">"answered"</span>,
+  <span class="json-key">"duration_secs"</span>: <span class="json-num">42</span>
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
