@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Logictap Technical Assignment Submission</title>
+<style>
+  @page {
+    size: A4;
+    margin: 15mm 15mm 15mm 15mm;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #0f172a;
+    line-height: 1.45;
+    font-size: 12.5px;
+    margin: 0;
+    padding: 0;
+  }
+  .header-card {
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 8px;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 20px;
+    color: #0f172a;
+    margin: 0 0 4px 0;
+  }
+  .header-meta {
+    font-size: 12px;
+    color: #475569;
+  }
+  h2 {
+    font-size: 15px;
+    color: #1e40af;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 3px;
+    margin-top: 14px;
+    margin-bottom: 8px;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 13px;
+    color: #0f172a;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    page-break-after: avoid;
+  }
+  p, ul, ol {
+    margin-top: 2px;
+    margin-bottom: 6px;
+  }
+  li {
+    margin-bottom: 2px;
+  }
+  code {
+    font-family: "Cascadia Code", Consolas, Monaco, "Courier New", monospace;
+    font-size: 11px;
+    background-color: #f1f5f9;
+    padding: 1px 4px;
+    border-radius: 3px;
+    color: #0f172a;
+  }
+  pre {
+    font-family: "Cascadia Code", Consolas, Monaco, "Courier New", monospace;
+    font-size: 10.5px;
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 8px 10px;
+    border-radius: 5px;
+    margin: 6px 0;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    word-break: break-word;
+    page-break-inside: avoid;
+  }
+  .terminal-box {
+    background-color: #090d16;
+    color: #38bdf8;
+    border: 1px solid #1e293b;
+    padding: 8px 10px;
+    border-radius: 5px;
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 10px;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    page-break-inside: avoid;
+  }
+  .img-container {
+    text-align: center;
+    margin: 8px 0;
+    page-break-inside: avoid;
+  }
+  img {
+    max-width: 95%;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+  }
+  .page-break {
+    page-break-before: always;
+  }
+</style>
+</head>
+<body>
+
+<div class="header-card">
+  <h1>Logictap Technical Assignment Submission</h1>
+  <div class="header-meta">
+    <strong>Candidate Role:</strong> AI Voice Agent Platform Engineer &nbsp;|&nbsp; 
+    <strong>Total Duration:</strong> 48 minutes &nbsp;|&nbsp; 
+    <strong>Stack:</strong> Python 3.14, FastAPI, SQLite3, pytest
+  </div>
+</div>
+
+<h2>Part 1: Find Out What Went Wrong</h2>
+
+<h3>1. Step-by-Step Explanation</h3>
+<ol>
+  <li><strong>10:02:19</strong>: Call connected. <code>on_call_answered</code> started a 45s silence timeout timer (<code>on_no_response_timeout</code>).</li>
+  <li><strong>10:02:24 – 10:02:58</strong>: Patient spoke multiple times, but no event listener cancelled or reset the running timer.</li>
+  <li><strong>10:03:04</strong>: The 45s timer expired while patient was speaking. It marked the job <code>failed</code>, set <code>attempts=1</code>, and queued a retry for 30 minutes later (<code>run_after_minutes=30</code>).</li>
+  <li><strong>10:03:52</strong>: Call completed normally. <code>on_call_ended</code> marked state <code>completed</code> (running twice due to duplicate webhooks), but never dequeued or cancelled the pending retry.</li>
+  <li><strong>10:33:04</strong>: 30 minutes later, the retry job ran. <code>run_job</code> executed and dialled the patient without checking if <code>job.state == "completed"</code>.</li>
+</ol>
+
+<h3>2. Ranked List of Problems</h3>
+<ol>
+  <li><strong>Uncancelled Silence Timeout</strong>: 45s silence timer was never aborted upon user speech or call finish, triggering a false failure.</li>
+  <li><strong>Missing State Guard in <code>run_job</code></strong>: <code>run_job</code> unconditionally dials without checking if the job is already completed.</li>
+  <li><strong>Uncleared Retry Queue on Completion</strong>: <code>on_call_ended</code> does not cancel pending retry jobs in the queue.</li>
+  <li><strong>Non-Idempotent Webhook Handler</strong>: Duplicate webhooks at 10:03:52 caused double execution, inflating <code>attempts</code> to 3.</li>
+  <li><strong>Double Incrementing of Attempts</strong>: Both timeout and call-ended events incremented attempts for a single dial.</li>
+</ol>
+
+<h3>3. Fix for Problem #1 (Timeout Cancellation)</h3>
+<p>Track active timer handles by <code>job_id</code> and cancel them whenever speech is detected or the call terminates:</p>
+<pre><code>def on_caller_spoke(job_id):
+    timer.cancel(job_id)
+
+def on_call_ended(event):
+    timer.cancel(event["job_id"])
+    job = db.get_job(event["job_id"])
+    ...</code></pre>
+
+<h2>Part 2: Use a Tool You Have Not Used Before</h2>
+
+<h3>1. Temporary Webhook Address</h3>
+<p><code>https://webhook.site/f27c3ccb-d2fa-4f45-9a26-776e16aeab94</code></p>
+
+<h3>2. Terminal Commands Executed</h3>
+<pre><code># Request 1: Initial "call ended" webhook
+curl.exe -i -X POST https://webhook.site/f27c3ccb-d2fa-4f45-9a26-776e16aeab94 \
+  -H "Content-Type: application/json" \
+  -d '{"call_id": "call_8841", "status": "answered", "duration_secs": 42}'
+
+# Request 2: Duplicate "call ended" webhook (identical payload)
+curl.exe -i -X POST https://webhook.site/f27c3ccb-d2fa-4f45-9a26-776e16aeab94 \
+  -H "Content-Type: application/json" \
+  -d '{"call_id": "call_8841", "status": "answered", "duration_secs": 42}'</code></pre>
+
+<h3>3. Tool Screenshot Showing Both Requests Arriving</h3>
+<p>Both requests arrived 15 seconds apart at 14:36:42 GMT and 14:36:57 GMT:</p>
+<div class="img-container">
+  <img src="webhook_site_screenshot.png" alt="Webhook.site Inspector Screenshot" style="max-height: 250px;">
+</div>
+
+<h3>4. Detecting Repeats & Recommended Additions</h3>
+<ul>
+  <li><strong>How a server tells it is a repeat using only tool data:</strong><br>
+  The inspector shows identical request properties: same HTTP method (<code>POST</code>), identical client IP (<code>223.196.192.216</code>), identical <code>Content-Length: 67</code>, and identical JSON body matching on <code>call_id: "call_8841"</code>, <code>status: "answered"</code>, and <code>duration_secs: 42</code>. When consecutive requests arrive with identical payloads for an existing entity, it represents a duplicate delivery.</li>
+  <li><strong>What to add to the request to make detection easier:</strong><br>
+  1. <strong>An Idempotency-Key / Event ID Header</strong>: e.g. <code>Idempotency-Key: evt_8841_call_ended_01</code>, allowing O(1) cache lookups.<br>
+  2. <strong>Delivery Metadata Headers</strong>: e.g. <code>X-Delivery-Attempt: 2</code> and <code>X-Event-Timestamp: 1791297402</code>.</li>
+</ul>
+
+<h3>5. Insight Learned</h3>
+<p>In HTTP webhook delivery, identical business events invariably arrive with distinct transport-level metadata (such as server-assigned <code>X-Request-Id</code>s and unique TCP socket ports). Relying on transport metadata is insufficient—deduplication must be enforced at the business logic layer using domain keys. Additionally, Windows PowerShell strips raw double quotes from JSON strings passed to CLI tools, requiring explicit single-quoting or binary streaming.</p>
+
+<div class="page-break"></div>
+
+<h2>Part 3: Build a Small Service with AI</h2>
+
+<h3>1. Version 1 (Untouched Initial Code from AI)</h3>
+<pre><code>from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+
+app = FastAPI()
+calls_db = {}
+
+class CallEndedPayload(BaseModel):
+    call_id: Optional[str] = None
+    status: str
+    duration_secs: int
+
+@app.post("/call-ended")
+def call_ended(payload: CallEndedPayload):
+    if not payload.call_id:
+        raise HTTPException(status_code=400, detail="Missing call_id")
+    if payload.call_id in calls_db:
+        return {"status": "success", "message": "Call already recorded", "data": calls_db[payload.call_id]}
+    record = payload.dict()
+    calls_db[payload.call_id] = record
+    return {"status": "success", "message": "Call recorded", "data": record}
+
+@app.get("/calls/{call_id}")
+def get_call(call_id: str):
+    if call_id not in calls_db:
+        raise HTTPException(status_code=404, detail="Call not found")
+    return calls_db[call_id]</code></pre>
+
+<h3>2. Final Version (<code>app.py</code>)</h3>
+<pre><code>import sqlite3, os
+from contextlib import asynccontextmanager
+from typing import Optional
+from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
+
+def get_db_path() -> str:
+    return os.getenv("DB_PATH", "calls.db")
+
+def init_db(db_path: Optional[str] = None):
+    with sqlite3.connect(db_path or get_db_path()) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS calls (
+                call_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                duration_secs INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+app = FastAPI(title="Logictap Call Recording Service", lifespan=lifespan)
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    for err in exc.errors():
+        if "call_id" in err.get("loc", ()):
+            return JSONResponse(status_code=400, content={"error": "Bad Request", "detail": "call_id is required and cannot be empty"})
+    return JSONResponse(status_code=400, content={"error": "Bad Request", "detail": exc.errors()[0].get("msg", "Invalid request body")})
+
+class CallEndedPayload(BaseModel):
+    call_id: str = Field(..., min_length=1)
+    status: str = Field(..., min_length=1)
+    duration_secs: int = Field(..., ge=0)
+
+    @field_validator("call_id")
+    @classmethod
+    def call_id_must_not_be_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("call_id cannot be empty or whitespace")
+        return v.strip()
+
+def get_db_connection():
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
+
+@app.post("/call-ended")
+def record_call_ended(payload: CallEndedPayload, response: Response):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO calls (call_id, status, duration_secs) VALUES (?, ?, ?)",
+            (payload.call_id, payload.status, payload.duration_secs)
+        )
+        conn.commit()
+        if cursor.rowcount == 1:
+            response.status_code = status.HTTP_201_CREATED
+            return {"success": True, "message": "Call record created successfully", "call_id": payload.call_id, "is_duplicate": False}
+        else:
+            response.status_code = status.HTTP_200_OK
+            return {"success": True, "message": "Duplicate call received; existing record preserved", "call_id": payload.call_id, "is_duplicate": True}
+    finally:
+        conn.close()
+
+@app.get("/calls/{call_id}")
+def get_call_record(call_id: str):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT call_id, status, duration_secs, created_at FROM calls WHERE call_id = ?", (call_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Call record with ID '{call_id}' not found")
+        return {"call_id": row["call_id"], "status": row["status"], "duration_secs": row["duration_secs"], "created_at": row["created_at"]}
+    finally:
+        conn.close()</code></pre>
+
+<div class="page-break"></div>
+
+<h3>3. Prompts Used</h3>
+<ul>
+  <li><strong>Prompt 1 (Initial Generation):</strong><br>
+  <em>"Write a Python FastAPI service with two endpoints: POST /call-ended: accepts JSON like {'call_id': 'abc123', 'status': 'answered', 'duration_secs': 42} and stores it. If the call_id already exists, don't store a duplicate and return success. If call_id is missing, reject it with an error. GET /calls/{call_id}: returns the stored call or 404 if not found."</em></li>
+  <li><strong>Prompt 2 (Refinement for Production Readiness):</strong><br>
+  <em>"The in-memory dict has concurrency race conditions under duplicate webhook arrival and loses data on reboot. Refactor this to use SQLite with atomic idempotency using INSERT OR IGNORE and a PRIMARY KEY. Add Pydantic v2 validators rejecting empty/whitespace call_id and negative duration, return HTTP 201 for fresh creations vs 200 for duplicates, and map missing call_id to HTTP 400 Bad Request."</em></li>
+</ul>
+
+<h3>4. What Changed (Between V1 and Final)</h3>
+<ol>
+  <li><strong>Database-Level Idempotency</strong>: Replaced ephemeral Python dictionary with SQLite persistent storage using <code>PRIMARY KEY (call_id)</code> and atomic <code>INSERT OR IGNORE</code>, eliminating race conditions when duplicate webhooks arrive simultaneously.</li>
+  <li><strong>Robust Input Validation</strong>: Upgraded to Pydantic v2 with strict validators enforcing non-blank <code>call_id</code> and non-negative <code>duration_secs</code>, intercepting schema validation to return standardized HTTP 400 Bad Request responses.</li>
+  <li><strong>HTTP Semantics</strong>: Distinguished new resource creation (HTTP 201 Created) from idempotent replay acknowledgments (HTTP 200 OK) while preserving the original record.</li>
+</ol>
+
+<h3>5. Proof It Runs (Terminal Transcript)</h3>
+<div class="terminal-box">
+&gt;&gt;&gt; TEST 1: Initial POST /call-ended (call_id: 'abc123')
+Status Code: 201
+Response:    {"success":true,"message":"Call record created successfully","call_id":"abc123","is_duplicate":false}
+
+&gt;&gt;&gt; TEST 2: Duplicate POST /call-ended (Exact same payload with 'abc123')
+Status Code: 200
+Response:    {"success":true,"message":"Duplicate call received; existing record preserved","call_id":"abc123","is_duplicate":true}
+
+&gt;&gt;&gt; TEST 3: GET /calls/abc123 (Retrieve stored call record)
+Status Code: 200
+Response:    {"call_id":"abc123","status":"answered","duration_secs":42,"created_at":"2026-10-06 15:01:01"}
+
+&gt;&gt;&gt; TEST 4: POST /call-ended without call_id (Should be rejected with 400)
+Status Code: 400
+Response:    {"error":"Bad Request","detail":"call_id is required and cannot be empty"}
+
+&gt;&gt;&gt; TEST 5: GET /calls/nonexistent_999 (Should return 404)
+Status Code: 404
+Response:    {"detail":"Call record with ID 'nonexistent_999' not found"}
+</div>
+
+<h3>6. Automated Test (<code>test_app.py</code>)</h3>
+<pre><code>def test_repeated_request_does_not_create_second_record():
+    payload = {"call_id": "abc123", "status": "answered", "duration_secs": 42}
+
+    # 1. First request
+    resp1 = client.post("/call-ended", json=payload)
+    assert resp1.status_code in [200, 201]
+    assert resp1.json()["success"] is True
+
+    with sqlite3.connect(TEST_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM calls WHERE call_id = ?", ("abc123",))
+        assert cursor.fetchone()[0] == 1
+
+    # 2. Second request with the exact same payload
+    resp2 = client.post("/call-ended", json=payload)
+    assert resp2.status_code == 200
+    assert resp2.json()["success"] is True
+
+    # Verify that NO second record was created
+    with sqlite3.connect(TEST_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM calls WHERE call_id = ?", ("abc123",))
+        assert cursor.fetchone()[0] == 1</code></pre>
+<p><strong>Pytest Result:</strong> <code>4 passed in 0.78s</code></p>
+
+<h2>Part 4: Reflect</h2>
+
+<h3>1. Inaccurate or Unhelpful AI Recommendation & Remediation</h3>
+<p>In Version 1, the AI implemented an in-memory dictionary check (<code>if call_id in calls_db:</code>) for deduplication. This was flawed because under concurrent webhook arrivals (like the dual 10:03:52 events in Part 1), an in-memory check without database locking suffers from a race condition where both requests can evaluate to false before either writes. It also meant all records would disappear upon server restart. I replaced this with an SQLite database using an atomic <code>PRIMARY KEY</code> and <code>INSERT OR IGNORE</code> query, delegating idempotency guarantees to the database engine.</p>
+
+<h3>2. Tools Used</h3>
+<ul>
+  <li><strong>AI Tooling</strong>: Gemini (Antigravity Assistant)</li>
+  <li><strong>Backend Runtime & Frameworks</strong>: Python 3.14.7, FastAPI, Pydantic v2, Uvicorn, SQLite3</li>
+  <li><strong>Testing & HTTP Clients</strong>: pytest 9.1.1, HTTPX 0.28.1, Starlette TestClient, cURL 8.21.0</li>
+  <li><strong>Webhook Inspection & Browser Automation</strong>: Webhook.site (REST API & Inspector), Google Chrome Headless</li>
+  <li><strong>Version Control & Shell</strong>: Git 2.50.1, PowerShell 5.1</li>
+</ul>
+
+<h3>3. Hardest Part (In One Line)</h3>
+<p><em>Pinpointing how an uncancelled silence timeout silently enqueued a delayed retry that later triggered without checking the call's updated "completed" state.</em></p>
+
+<h3>4. Total Duration</h3>
+<p><strong>48 minutes</strong> (Part 1: 15 min, Part 2: 12 min, Part 3: 18 min, Part 4: 3 min).</p>
+
+</body>
+</html>
